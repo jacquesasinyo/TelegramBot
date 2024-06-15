@@ -1,103 +1,128 @@
-
-
 import logging
-import openai
+from openai import OpenAI, OpenAIError
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ConversationHandler,
+    ContextTypes,
+)
 
 # Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                     level=logging.INFO)
-
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set your OpenAI API key
-openai.api_key = "OpenAI API key"
+openai_api_key = "ta cle openAI"
+client = OpenAI(api_key=openai_api_key)
 
 # Define the states for the conversation
 ANSWERING_QUESTIONS = range(7)
 
 # Define the questions
 questions = [
-"Quel est votre Nom et Prenom? ",
-"Pouvez-vous me parler un peu de vous et de votre parcours éducatif?",
-"Quel programme spécifique postulez-vous à l'université ?",
-"Qu'est-ce qui vous a inspiré à poursuivre des études dans ce domaine particulier ?",
-"Quelles compétences et qualités possédez-vous qui font de vous un candidat solide pour ce programme ?",
-
+    "Quel est votre nom et prénom ?",
+    "Pouvez-vous me parler un peu de vous et de votre parcours éducatif ?",
+    "Quel programme spécifique postulez-vous à l'université ?",
+    "Qu'est-ce qui vous a inspiré à poursuivre des études dans ce domaine particulier ?",
+    "Quelles compétences et qualités possédez-vous qui font de vous un candidat solide pour ce programme ?",
 ]
 
 answers = {}
 
 # Define the command handler for starting the conversation
-def start(update: Update, _: CallbackContext) -> int:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     if user_id not in answers:
         answers[user_id] = []
 
-    update.message.reply_text("Bonjour ! Bienvenue sur MotivationBot. Envisagez-vous de postuler dans des universités en Turquie et avez-vous besoin d'aide pour rédiger une lettre de motivation pour votre candidature ? Ne cherchez pas plus loin ! MotivationBot est là pour vous aider. Il vous suffit de donner à MotivationBot votre nom et prénom, et de répondre à quelques questions sur vos notes, vos réalisations, la profession que vous souhaitez exercer, les raisons de ce choix, et pourquoi vous voulez étudier en Turquie. Nous utiliserons vos réponses pour générer une lettre de motivation personnalisée rien que pour vous ! N'oubliez pas que c'est votre chance de montrer votre passion et votre engagement pour le domaine d'études que vous avez choisi. Alors, commençons par rédiger une lettre de motivation convaincante qui impressionnera les universités en Turquie. Mais d'abord, veuillez nous fournir votre nom et prénom afin que nous puissions adresser la lettre de motivation spécifiquement à vous.\n" + questions[0])
+    welcome_message = (
+        "Bonjour et bienvenue sur MotivationBot ! 🎓\n\n"
+        "Si vous envisagez de postuler à des universités en Turquie et avez besoin d'aide pour rédiger une lettre de motivation, vous êtes au bon endroit ! MotivationBot est là pour vous assister.\n\n"
+        "Je vais vous poser quelques questions sur votre parcours, vos réalisations et vos motivations. Ensuite, je vais générer une lettre de motivation personnalisée juste pour vous. C'est parti !\n\n"
+        "Pour commencer, veuillez me donner votre nom et prénom :"
+    )
+    await update.message.reply_text(welcome_message)
     return ANSWERING_QUESTIONS
 
-def ask_questions(update: Update, _: CallbackContext) -> int:
+async def ask_questions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     question_number = len(answers[user_id])
 
     if question_number < len(questions):
-        update.message.reply_text(questions[question_number])
+        if question_number == 0:
+            await update.message.reply_text(questions[question_number])
+        else:
+            personalized_question = questions[question_number]
+            await update.message.reply_text(personalized_question)
+
         return ANSWERING_QUESTIONS
     else:
-        return generate_motivational_letter(update)
+        return await generate_motivational_letter(update, context)
 
-def receive_answers(update: Update, _: CallbackContext) -> int:
+async def receive_answers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     answers[user_id].append(update.message.text)
-    return ask_questions(update, _)
+    return await ask_questions(update, context)
 
-def generate_motivational_letter(update: Update) -> int:
+async def generate_motivational_letter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
-   
 
     # Construct the prompt
-    prompt = f"Write a motivation Letter in french based on the following informations. Make sure to include my name at the end of the letter:\n\n"
-    for i, question in enumerate(questions[1:]):
-        prompt += f"Question: {question}\nAnswer: {answers[user_id][i + 1]}\n\n"
+    prompt = "Écrire une lettre de motivation en français destinée au bureau des admissions d'une université, basée sur les informations suivantes. Assurez-vous d'inclure mon nom à la fin de la lettre :\n\n"
+    for i, question in enumerate(questions):
+        prompt += f"{questions[i]}\nAnswer: {answers[user_id][i]}\n\n"
 
-    # Use ChatGPT API to generate the rest of the letter
-    response = openai.Completion.create(
-        engine="text-davinci-003",
-        prompt=prompt,
-        max_tokens=2936,  # Set the maximum number of tokens in the response
-        temperature=0.7  # Adjust the temperature for randomness (higher values make the output more diverse)
-    )
+    messages = [
+        {"role": "system", "content": "Vous êtes un assistant utile, compétent en rédaction de lettres de motivation."},
+        {"role": "user", "content": prompt}
+    ]
 
-    letter = response.choices[0].text
+    try:
+        # Use ChatGPT API to generate the rest of the letter
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=1500,
+            temperature=0.7
+        )
 
-    update.message.reply_text("Thank you for your answers. Here's your motivational letter:\n\n" + letter)
+        letter = completion.choices[0].message.content.strip()
+        await update.message.reply_text("Merci pour vos réponses. Voici votre lettre de motivation :\n\n" + letter)
 
+    except OpenAIError as e:
+        await update.message.reply_text(f"Une erreur s'est produite lors de la génération de la lettre : {e}")
+
+    # Clear user's answers
+    del answers[user_id]
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    if user_id in answers:
+        del answers[user_id]
+    await update.message.reply_text('Conversation annulée.')
     return ConversationHandler.END
 
 def main():
     # Set up the Telegram bot
-    updater = Updater("Telegram bot token")
-    dispatcher = updater.dispatcher
+    application = ApplicationBuilder().token("Ton token telegram").build()
 
     # Define the conversation handler
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            ANSWERING_QUESTIONS: [
-                MessageHandler(Filters.text & ~Filters.command, receive_answers)
-            ]
+            ANSWERING_QUESTIONS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_answers)]
         },
-        fallbacks=[]
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    dispatcher.add_handler(conversation_handler)
+    application.add_handler(conversation_handler)
 
     # Start the bot
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
- 
