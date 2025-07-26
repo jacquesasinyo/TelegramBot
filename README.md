@@ -2,7 +2,7 @@
 
 a Telegram Bot with Python and GPT-3.5 Integration! 🤖
 
-![My Daily Routine YouTube Thumbnail (1)](https://github.com/jacques172/TelegramBot/assets/96381612/2c3c2461-b5ca-4007-aa7d-11cb47146131)
+
 
 
 
